@@ -160,6 +160,7 @@ void sampDecrypt(uint8_t *buf, int len, int port, int unk);
 			}
 			default:
 			printf("[C->S] Got unknown packet ID: %lu %02X\n",buff[0],buff[0]);
+			return;
 			break;
 		}
 		//printf("client sent Packet ID: %02X/%d\n",buff[0],buff[0]);
@@ -168,6 +169,7 @@ void sampDecrypt(uint8_t *buf, int len, int port, int unk);
 		for(int i=0;i<4;i++) {
 			char c = 0xFF;
 			fwrite(&c, 1, 1, fd);
+			fflush(fd);
 		}
 		
 		fflush(fd);
@@ -193,6 +195,7 @@ void sampDecrypt(uint8_t *buf, int len, int port, int unk);
 			}
 			default:
 			printf("[S->C] Got unknown packet ID: %lu %02X\n",buff[0],buff[0]);
+			return;
 			break;
 		}
 		//printf("server sent Packet ID: %02X/%d\n",buff[0],buff[0]);
@@ -201,6 +204,7 @@ void sampDecrypt(uint8_t *buf, int len, int port, int unk);
 		for(int i=0;i<4;i++) {
 			char c = 0xCC;
 			fwrite(&c, 1, 1, fd);
+			fflush(fd);
 		}
 		sendto(m_sd, (char *)buff, len, 0, (struct sockaddr *)&m_address_info, slen);
 		//printf("Sending %d packet to client\n", len);
