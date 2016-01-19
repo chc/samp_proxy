@@ -2,6 +2,12 @@
 #define _UDPCLIENT_H
 #include "main.h"
 class INetClient;
+enum SAMPState {
+	ESAMPState_PreInit,
+	ESAMPState_InitChallenge,
+	ESAMPState_WaitChallenge,
+	ESAMPState_Connected,
+};
 class UDPClient : public INetClient {
 public:
 	UDPClient(int sd, struct sockaddr_in *si_other, uint32_t server_ip, uint16_t server_port);
@@ -21,5 +27,7 @@ private:
 	int m_server_socket;
 
 	struct sockaddr_in m_proxy_addr;
+
+	SAMPState m_state;
 };
 #endif

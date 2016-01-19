@@ -3,6 +3,9 @@
 #include "encryption.h"
 #include <stdio.h>
 #include <memory.h>
+
+#include <BitStream.h>
+#include <DS_RangeList.h>
 #define SAMP_MAGIC 0x504d4153
 
 typedef struct {
@@ -80,6 +83,8 @@ UDPClient::UDPClient(int sd, struct sockaddr_in *si_other, uint32_t server_ip, u
     m_server_port = server_port;
     m_server_ip = server_ip;
 
+    m_state = ESAMPState_PreInit;
+
     connect(m_server_socket, (struct sockaddr *)&m_server_addr, sizeof(m_server_addr));
 
     printf("Server IP: %s\n",inet_ntoa(m_server_addr.sin_addr));
@@ -149,19 +154,37 @@ void sampDecrypt(uint8_t *buf, int len, int port, int unk);
 
 		//
 		sampDecrypt((uint8_t*)buff, len, (m_server_port), 0);
-		switch(buff[0]) {
-			case ID_OPEN_CONNECTION_REQUEST:
-				printf("[C->S] Connect request packet\n");
-			break;
-			case ID_AUTH_KEY:
-			{
-				printf("[C->S] Auth Key\n");
+
+		if(m_state == ESAMPState_WaitChallenge) {
+			RakNet::BitStream iStream((unsigned char *)buff, len, false);
+			bool hasAcks;
+			iStream.Read(hasAcks);
+			DataStructures::RangeList<uint16_t> incomingAcks;
+			if(hasAcks) {
+				printf("** message has acks\n");
+				incomingAcks.Deserialize(&iStream);
+				printf("Num acks: %d\n",incomingAcks.ranges.Size());
+			}
+
+			uint16_t msgid;
+			iStream.Read(msgid);
+			printf("** Got Msg: %d\n",msgid);
+		} else {
+			
+			switch(buff[0]) {
+				case ID_OPEN_CONNECTION_REQUEST:
+					printf("[C->S] Connect request packet\n");
+				break;
+				case ID_AUTH_KEY:
+				{
+					printf("[C->S] Auth Key\n");
+					break;
+				}
+				default:
+				printf("[C->S] Got unknown packet ID: %lu %02X\n",buff[0],buff[0]);
+				return;
 				break;
 			}
-			default:
-			printf("[C->S] Got unknown packet ID: %lu %02X\n",buff[0],buff[0]);
-			return;
-			break;
 		}
 		//printf("client sent Packet ID: %02X/%d\n",buff[0],buff[0]);
 		fwrite(buff, len, 1, fd);
@@ -172,7 +195,6 @@ void sampDecrypt(uint8_t *buf, int len, int port, int unk);
 			fflush(fd);
 		}
 		
-		fflush(fd);
 		sampEncrypt((uint8_t*)buff, len-1, (m_server_port), 0);		
 		sendto(m_server_socket,(char *)buff,len,0,(struct sockaddr *)&m_server_addr, slen);
 
@@ -183,10 +205,16 @@ void sampDecrypt(uint8_t *buf, int len, int port, int unk);
 		switch(buff[0]) {
 			case ID_OPEN_CONNECTION_COOKIE: {
 				printf("[S->C] Cookie Request\n");
+				m_state = ESAMPState_InitChallenge;
 				break;
 			}
 			case ID_OPEN_CONNECTION_REPLY:
 			printf("[S->C] Open Connection Reply\n");
+			if(m_state == ESAMPState_InitChallenge) {
+
+				m_state = ESAMPState_WaitChallenge;
+				printf("Setting to wait challenge %d\n", m_state);
+			}
 			break;
 			case ID_AUTH_KEY:
 			{
