@@ -20,6 +20,8 @@ private:
 	struct sockaddr_in m_address_info;
 	int m_sd;
 
+	bool m_raknet_mode;
+
 	uint32_t m_server_ip;
 	uint16_t m_server_port;
 

@@ -19,7 +19,7 @@ uint32_t resolv(char *host) {
 }
 
 int main() {
-	char *server_dest_ip = "wc-rp.net";
+	char *server_dest_ip = "samp.nl-rp.net";
 	uint16_t server_dest_port = 7777;
 
 	char *bind_ip = "192.168.10.67";
