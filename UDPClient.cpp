@@ -6,6 +6,7 @@
 
 #include <BitStream.h>
 #include <DS_RangeList.h>
+#include <StringCompressor.h>
 
 
 #define SAMP_MAGIC 0x504d4153
@@ -420,8 +421,8 @@ void sampDecrypt(uint8_t *buf, int len, int port, int unk);
 				is.ReadCompressed(bits);
 				uint32_t bytes = BYTES_TO_BITS(bits);
 				
-				
-				if(rpcid != 93) break;
+				printf("[S->C] RPC: %d\n",rpcid);
+				if(rpcid != 93 && rpcid != 61) break;
 				char rpcdata[1024];
 				
 				is.ReadBits((unsigned char *)&rpcdata, bits, false);
@@ -435,6 +436,68 @@ void sampDecrypt(uint8_t *buf, int len, int port, int unk);
 					bs.Read((char *)&msg, clen);
 					printf("Msg: [%08X] %s\n", col, msg);
 
+				} else if(rpcid == 61) {
+/*
+
+struct stSAMPDialog
+{
+	int iIsActive;
+	BYTE bDialogStyle;
+	WORD wDialogID;
+	BYTE bTitleLength;
+	char szTitle[257];
+	BYTE bButton1Len;
+	char szButton1[257];
+	BYTE bButton2Len;
+	char szButton2[257];
+	char szInfo[257];
+};
+	PCHAR Data = reinterpret_cast<PCHAR>(rpcParams->input);
+	int iBitLength = rpcParams->numberOfBitsOfData;
+	RakNet::BitStream bsData((unsigned char *)Data,(iBitLength/8)+1,false);
+
+	bsData.Read(sampDialog.wDialogID);
+	bsData.Read(sampDialog.bDialogStyle);
+
+	bsData.Read(sampDialog.bTitleLength);
+	bsData.Read(sampDialog.szTitle, sampDialog.bTitleLength);
+	sampDialog.szTitle[sampDialog.bTitleLength] = 0;
+
+	bsData.Read(sampDialog.bButton1Len);
+	bsData.Read(sampDialog.szButton1, sampDialog.bButton1Len);
+	sampDialog.szButton1[sampDialog.bButton1Len] = 0;
+
+	bsData.Read(sampDialog.bButton2Len);
+	bsData.Read(sampDialog.szButton2, sampDialog.bButton2Len);
+	sampDialog.szButton2[sampDialog.bButton2Len] = 0;
+
+	stringCompressor->DecodeString(sampDialog.szInfo, 256, &bsData);
+*/
+				uint8_t style;
+				uint16_t dialogid;
+				uint8_t titlelen;
+				uint8_t title[256];
+				uint8_t buttonslen[2];
+				uint8_t buttons[2][256];
+				uint8_t content[256];
+
+				memset(&content,0,sizeof(content));
+				memset((char *)&buttons,0,sizeof(buttons));
+				memset(&title,0,sizeof(title));
+				bs.Read(dialogid);
+				bs.Read(style);
+				bs.Read(titlelen);
+				bs.Read((char *)&title, titlelen);
+
+				bs.Read(buttonslen[0]);
+				bs.Read((char *)&buttons[0], buttonslen[0]);
+
+				bs.Read(buttonslen[1]);
+				bs.Read((char *)&buttons[1], buttonslen[1]);
+
+				StringCompressor::Instance()->DecodeString((char *)&content,256,&bs);
+
+				printf("%s\n%s\n",title, content);
 				}
 				break;
 			}
