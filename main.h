@@ -1,8 +1,8 @@
 #ifndef _MAIN_H
 #define _MAIN_H
 #ifdef _WIN32
-#include <Windows.h>
-#include <WinSock.h>
+#include <windows.h>
+#include <winsock.h>
 typedef int socklen_t;
 #define snprintf sprintf_s
 #define strcasecmp _stricmp

@@ -212,11 +212,9 @@ void sampDecrypt(uint8_t *buf, int len, int port, int unk);
 		is.Read(seqid);
 		//printf("**** Packet %d\n",seqid);
 		if(hasacks) {
-			if(hasacks) {
-				DataStructures::RangeList<uint16_t> acknowlegements;
-				acknowlegements.Deserialize(&is);
-				//printf("Num acknowlegements: %d\n",acknowlegements.Size());
-			}
+			DataStructures::RangeList<uint16_t> acknowlegements;
+			acknowlegements.Deserialize(&is);
+			//printf("**** Num acknowlegements: %d\n",acknowlegements.Size());
 		}
 		is.ReadBits(&reliability, 4, true);
 		
@@ -226,7 +224,7 @@ void sampDecrypt(uint8_t *buf, int len, int port, int unk);
 			uint16_t orderingIndexType;
 			is.ReadBits((unsigned char *)&orderingChannel, 5, true);
 			is.Read(orderingIndexType);
-			//printf("reliability: %d - (%d %d)\n",reliability,orderingChannel, orderingIndexType);
+			printf("**** reliability: %d - (%d %d)\n",reliability,orderingChannel, orderingIndexType);
 		}
 
 		bool is_split_packet;
@@ -239,7 +237,7 @@ void sampDecrypt(uint8_t *buf, int len, int port, int unk);
 			is.Read(split_packet_id);
 			is.ReadCompressed(split_packet_index);
 			is.ReadCompressed(split_packet_count);
-			//printf("Split: (%d) %d %d\n", split_packet_id, split_packet_index, split_packet_count);
+			printf("**** Split: (%d) %d %d\n", split_packet_id, split_packet_index, split_packet_count);
 		}
 		is.ReadCompressed(data_len);
 		
@@ -287,9 +285,9 @@ void sampDecrypt(uint8_t *buf, int len, int port, int unk);
 				is.ReadCompressed(bits);
 				uint32_t bytes = BYTES_TO_BITS(bits);
 
-				printf("[C->S] RPC %d (%d - %d - %d)\n",rpcid, bytes, bits, data_len);
-				if(rpcid == 0 ||data_len < 0 || data_len > len || bits == 0) break;
 				
+				if(rpcid == 0 ||data_len < 0 || data_len > len || bits == 0 || rpcid != 25) break;
+				printf("[C->S] RPC %d (%d - %d - %d)\n",rpcid, bytes, bits, data_len);
 				
 				char rpcdata[1024];
 				
@@ -421,8 +419,9 @@ void sampDecrypt(uint8_t *buf, int len, int port, int unk);
 				is.ReadCompressed(bits);
 				uint32_t bytes = BYTES_TO_BITS(bits);
 				
+				
+				if(rpcid != 93) break;
 				printf("[S->C] RPC: %d\n",rpcid);
-				if(rpcid != 93 && rpcid != 61) break;
 				char rpcdata[1024];
 				
 				is.ReadBits((unsigned char *)&rpcdata, bits, false);

@@ -19,10 +19,16 @@ uint32_t resolv(char *host) {
 }
 
 int main() {
-	char *server_dest_ip = "samp.nl-rp.net";
+	#ifdef _WIN32
+    WSADATA wsdata;
+    WSAStartup(MAKEWORD(1,0),&wsdata);
+	#endif
+
+	char *server_dest_ip = "wc-rp.net";
 	uint16_t server_dest_port = 7777;
 
-	char *bind_ip = "192.168.10.67";
+	//char *bind_ip = "192.168.10.67";
+	char *bind_ip = "localhost";
 	uint16_t server_source_port = 7777;
 
 	uint32_t server_ip = resolv(server_dest_ip);
