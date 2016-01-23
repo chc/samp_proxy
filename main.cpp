@@ -23,8 +23,8 @@ int main() {
     WSADATA wsdata;
     WSAStartup(MAKEWORD(1,0),&wsdata);
 	#endif
-
-	char *server_dest_ip = "wc-rp.net";
+//s1.crazybobs.net:7777
+	char *server_dest_ip = "server.ls-rp.com";
 	uint16_t server_dest_port = 7777;
 
 	//char *bind_ip = "192.168.10.67";
@@ -84,7 +84,7 @@ int main() {
 		    socklen_t slen = sizeof(struct sockaddr_in);
 			int len = recvfrom(server_sd,(char *)&recvbuf,sizeof(recvbuf),0,(struct sockaddr *)&si_other,&slen);
 			if(client == NULL) {
-				client = new UDPClient(server_sd, &si_other, server_ip, server_dest_port);
+				client = new UDPClient(server_sd, &si_other, server_ip, server_dest_port, server_source_port);
 				if(client->getServerSocket()+1 > hsock) {
 					hsock = client->getServerSocket()+1;
 				}

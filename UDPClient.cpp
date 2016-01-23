@@ -2,11 +2,9 @@
 #include "UDPClient.h"
 #include "encryption.h"
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include <memory.h>
-
-#include <BitStream.h>
-#include <DS_RangeList.h>
-#include <StringCompressor.h>
 
 
 #define SAMP_MAGIC 0x504d4153
@@ -116,7 +114,7 @@ typedef struct _ONFOOT_SYNC_DATA
 } ONFOOT_SYNC_DATA;
 
 
-UDPClient::UDPClient(int sd, struct sockaddr_in *si_other, uint32_t server_ip, uint16_t server_port) {
+UDPClient::UDPClient(int sd, struct sockaddr_in *si_other, uint32_t server_ip, uint16_t server_port, uint16_t proxy_server_port) {
 	m_sd = sd;
 	memcpy(&m_address_info, si_other, sizeof(m_address_info));
 
@@ -130,11 +128,14 @@ UDPClient::UDPClient(int sd, struct sockaddr_in *si_other, uint32_t server_ip, u
     m_server_ip = server_ip;
 
     m_state = ESAMPState_PreInit;
+    m_proxy_server_port = proxy_server_port;
     m_raknet_mode = false;
 
     connect(m_server_socket, (struct sockaddr *)&m_server_addr, sizeof(m_server_addr));
 
-    printf("Server IP: %s\n",inet_ntoa(m_server_addr.sin_addr));
+    printf("Server IP: %s:%d\n",inet_ntoa(m_server_addr.sin_addr),m_server_port);
+
+    StringCompressor::AddReference();
 }
 UDPClient::~UDPClient() {
 
@@ -190,66 +191,80 @@ void UDPClient::process_game_packet(char *buff, int len, bool client_to_server) 
 	void sampEncrypt(uint8_t *buf, int len, int port, int unk);
 void sampDecrypt(uint8_t *buf, int len, int port, int unk);
 	*/
-	static bool writemode = false;
-	static FILE *fd = NULL;
-	if(!fd) {
-		fd = fopen("dump.bin", "wb");
-	}
 	if(client_to_server) {
-		sampDecrypt((uint8_t*)buff, len, (m_server_port), 0);
+		sampDecrypt((uint8_t*)buff, len, m_proxy_server_port, 0);
 	}
-	uint8_t msgid = 0;
-	uint16_t data_len = 0;
-	char data[256];
+	RakNet::BitStream is((unsigned char *)buff, len, false);
 	if(!m_raknet_mode) {
-		msgid = buff[0];
+		process_bitstream(&is, client_to_server);
 	} else {
-		RakNet::BitStream is((unsigned char *)buff, len, false);
+		
 		bool hasacks;
 		uint8_t reliability = 0;
 		uint16_t seqid = 0;
 		is.ReadBits((unsigned char *)&hasacks, 1);
-		is.Read(seqid);
-		//printf("**** Packet %d\n",seqid);
+
 		if(hasacks) {
 			DataStructures::RangeList<uint16_t> acknowlegements;
 			acknowlegements.Deserialize(&is);
 			//printf("**** Num acknowlegements: %d\n",acknowlegements.Size());
 		}
-		is.ReadBits(&reliability, 4, true);
-		
-		//printf("reliability: %d\n",reliability);
-		if(reliability == UNRELIABLE_SEQUENCED || reliability == RELIABLE_SEQUENCED || reliability == RELIABLE_ORDERED ) {
-			uint8_t orderingChannel = 0;
-			uint16_t orderingIndexType;
-			is.ReadBits((unsigned char *)&orderingChannel, 5, true);
-			is.Read(orderingIndexType);
-			printf("**** reliability: %d - (%d %d)\n",reliability,orderingChannel, orderingIndexType);
-		}
+		while(BITS_TO_BYTES(is.GetNumberOfUnreadBits()) > 1) {
+			is.Read(seqid);
+			//printf("**** Packet %d - %d\n",seqid, len);
+			is.ReadBits(&reliability, 4, true);
+			
+			//printf("reliability: %d\n",reliability);
+			if(reliability == UNRELIABLE_SEQUENCED || reliability == RELIABLE_SEQUENCED || reliability == RELIABLE_ORDERED ) {
+				uint8_t orderingChannel = 0;
+				uint16_t orderingIndexType;
+				is.ReadBits((unsigned char *)&orderingChannel, 5, true);
+				is.Read(orderingIndexType);
+				//if(!client_to_server)
+				//	printf("**** reliability: %d - (chan: %d  index: %d) (%d)\n",reliability,orderingChannel, orderingIndexType, len);
 
-		bool is_split_packet;
-		//is.ReadBits((unsigned char *)&is_split_packet, 1);
-		is.Read(is_split_packet);
 
-		if(is_split_packet) {
-			uint16_t split_packet_id;
-			uint32_t split_packet_index, split_packet_count;
-			is.Read(split_packet_id);
-			is.ReadCompressed(split_packet_index);
-			is.ReadCompressed(split_packet_count);
-			printf("**** Split: (%d) %d %d\n", split_packet_id, split_packet_index, split_packet_count);
+			}
+
+			bool is_split_packet;
+			//is.ReadBits((unsigned char *)&is_split_packet, 1);
+			is.Read(is_split_packet);
+
+			if(is_split_packet) {
+				uint16_t split_packet_id;
+				uint32_t split_packet_index, split_packet_count;
+				is.Read(split_packet_id);
+				is.ReadCompressed(split_packet_index);
+				is.ReadCompressed(split_packet_count);
+				if(!client_to_server)
+					printf("**** Split: (%d) %d %d\n", split_packet_id, split_packet_index, split_packet_count);
+			}
+			//loop through all data
+			uint16_t data_len;
+			is.ReadCompressed(data_len);
+			char data[4096];
+			is.ReadAlignedBytes((unsigned char *)&data, BITS_TO_BYTES(data_len));
+
+			RakNet::BitStream bs((unsigned char *)&data, BITS_TO_BYTES(data_len), false);
+			process_bitstream(&bs, client_to_server);
 		}
-		is.ReadCompressed(data_len);
-		
-		
-		data_len = BITS_TO_BYTES(data_len);
-		
-		is.ReadAlignedBytes((uint8_t*)&data, data_len);
-		msgid = data[0];
 	}
+
+
 	socklen_t slen = sizeof(struct sockaddr_in);
-	if(data_len > len || data_len < 0)  {data_len = len-4;}
-	RakNet::BitStream is((unsigned char *)&data[1], data_len, true);
+
+	if(client_to_server) {
+		sampEncrypt((uint8_t*)buff, len-1, (m_server_port), 0);		
+		sendto(m_server_socket,(char *)buff,len,0,(struct sockaddr *)&m_server_addr, slen);
+	} else {
+		sendto(m_sd, (char *)buff, len, 0, (struct sockaddr *)&m_address_info, slen);
+	}
+
+}
+
+void UDPClient::process_bitstream(RakNet::BitStream *stream, bool client_to_server) {
+	uint8_t msgid;
+	stream->Read(msgid);
 	if(client_to_server) {		
 		switch(msgid) {
 			case ID_OPEN_CONNECTION_REQUEST:
@@ -265,8 +280,8 @@ void sampDecrypt(uint8_t *buf, int len, int port, int unk);
 				uint8_t key_len;
 				char key[256];
 				memset(&key,0,sizeof(key));
-				is.Read(key_len);
-				is.Read(key, key_len);
+				stream->Read(key_len);
+				stream->Read(key, key_len);
 				printf("[C->S] Auth Key: %s\n",key);
 				break;
 			}
@@ -280,18 +295,20 @@ void sampDecrypt(uint8_t *buf, int len, int port, int unk);
 			}
 			case ID_RPC: {
 				uint8_t rpcid;
-				uint32_t bits;
-				is.Read(rpcid);
-				is.ReadCompressed(bits);
-				uint32_t bytes = BYTES_TO_BITS(bits);
+				uint32_t bits = 0;
+				stream->Read(rpcid);
+				if(!stream->ReadCompressed(bits)) {
+					printf("Failed to read size\n");
+				}
+				uint32_t bytes = BITS_TO_BYTES(bits);
 
 				
-				if(rpcid == 0 ||data_len < 0 || data_len > len || bits == 0 || rpcid != 25) break;
-				printf("[C->S] RPC %d (%d - %d - %d)\n",rpcid, bytes, bits, data_len);
+				//if(rpcid == 0 ||data_len < 0 || data_len > len || bits == 0) break;
+				printf("[C->S] RPC %d\n",rpcid);
 				
 				char rpcdata[1024];
 				
-				is.ReadBits((unsigned char *)&rpcdata, bits, false);
+				stream->ReadBits((unsigned char *)&rpcdata, bits, false);
 				RakNet::BitStream bs((unsigned char *)&rpcdata, bytes, true);
 				if(rpcid == 25) {
 					uint32_t netver;
@@ -334,7 +351,7 @@ void sampDecrypt(uint8_t *buf, int len, int port, int unk);
 			}
 			case ID_PLAYER_SYNC: 
 			ONFOOT_SYNC_DATA fs;
-			is.Read((char *)&fs, sizeof(fs));
+			stream->Read((char *)&fs, sizeof(fs));
 			//printf("[C->S] Pos: %f, %f, %f\n",fs.vecPos[0],fs.vecPos[1],fs.vecPos[2]);
 			break;
 			case ID_VEHICLE_SYNC: {
@@ -368,9 +385,6 @@ void sampDecrypt(uint8_t *buf, int len, int port, int unk);
 			fflush(fd);
 		}
 		*/
-		
-		sampEncrypt((uint8_t*)buff, len-1, (m_server_port), 0);		
-		sendto(m_server_socket,(char *)buff,len,0,(struct sockaddr *)&m_server_addr, slen);
 
 	} else {
 		switch(msgid) {
@@ -384,7 +398,6 @@ void sampDecrypt(uint8_t *buf, int len, int port, int unk);
 			if(m_state == ESAMPState_InitChallenge) {
 				m_raknet_mode = true;
 				m_state = ESAMPState_WaitChallenge;
-				printf("Setting to wait challenge %d\n", m_state);
 			}
 			break;
 			case ID_AUTH_KEY:
@@ -392,39 +405,41 @@ void sampDecrypt(uint8_t *buf, int len, int port, int unk);
 				uint8_t key_len;
 				char key[256];
 				memset(&key,0,sizeof(key));
-				is.Read(key_len);
-				is.Read(key, key_len);
+				stream->Read(key_len);
+				stream->Read(key, key_len);
 				printf("[S->C] Auth Key: %s\n", key);
 				break;
 			}
 			case ID_CONNECTION_REQUEST_ACCEPTED: {
 				printf("[S->C] Connection Accepted\n");
-				is.IgnoreBits(32);
-				is.IgnoreBits(16);
+				stream->IgnoreBits(32);
+				stream->IgnoreBits(16);
 				uint16_t player_id;
 				uint32_t challenge;
-				is.Read(player_id);
-				is.Read(challenge);
+				stream->Read(player_id);
+				stream->Read(challenge);
 				printf("ID: %d, challenge: %08X\n",player_id, challenge);
-				writemode = true;
-
-
+				break;
+			}
+			case ID_TIMESTAMP: {
+				printf("[S->C] Timestamp\n");
 				break;
 			}
 			case ID_RPC: {
 				//93
 				uint8_t rpcid;
-				uint32_t bits;
-				is.Read(rpcid);
-				is.ReadCompressed(bits);
-				uint32_t bytes = BYTES_TO_BITS(bits);
+				uint32_t bits = 0;
+				stream->Read(rpcid);
+				stream->ReadCompressed(bits);
+				uint32_t bytes = BITS_TO_BYTES(bits);
 				
 				
-				if(rpcid != 93) break;
+				
 				printf("[S->C] RPC: %d\n",rpcid);
+				//if(rpcid != 93) break;
 				char rpcdata[1024];
 				
-				is.ReadBits((unsigned char *)&rpcdata, bits, false);
+				stream->ReadBits((unsigned char *)&rpcdata, bits, false);
 				RakNet::BitStream bs((unsigned char *)&rpcdata, bytes, true);
 				if(rpcid == 93) {
 					char msg[256];
@@ -436,67 +451,33 @@ void sampDecrypt(uint8_t *buf, int len, int port, int unk);
 					printf("Msg: [%08X] %s\n", col, msg);
 
 				} else if(rpcid == 61) {
-/*
+					uint8_t style;
+					uint16_t dialogid;
+					uint8_t titlelen;
+					uint8_t title[256];
+					uint8_t buttonslen[2];
+					uint8_t buttons[2][256];
+					char content[8096];
 
-struct stSAMPDialog
-{
-	int iIsActive;
-	BYTE bDialogStyle;
-	WORD wDialogID;
-	BYTE bTitleLength;
-	char szTitle[257];
-	BYTE bButton1Len;
-	char szButton1[257];
-	BYTE bButton2Len;
-	char szButton2[257];
-	char szInfo[257];
-};
-	PCHAR Data = reinterpret_cast<PCHAR>(rpcParams->input);
-	int iBitLength = rpcParams->numberOfBitsOfData;
-	RakNet::BitStream bsData((unsigned char *)Data,(iBitLength/8)+1,false);
+					memset(&content,0,sizeof(content));
+					memset((char *)&buttons,0,sizeof(buttons));
+					memset(&title,0,sizeof(title));
 
-	bsData.Read(sampDialog.wDialogID);
-	bsData.Read(sampDialog.bDialogStyle);
+					bs.Read(dialogid);
+					bs.Read(style);
 
-	bsData.Read(sampDialog.bTitleLength);
-	bsData.Read(sampDialog.szTitle, sampDialog.bTitleLength);
-	sampDialog.szTitle[sampDialog.bTitleLength] = 0;
+					bs.Read(titlelen);
+					bs.Read((char *)&title, titlelen);
 
-	bsData.Read(sampDialog.bButton1Len);
-	bsData.Read(sampDialog.szButton1, sampDialog.bButton1Len);
-	sampDialog.szButton1[sampDialog.bButton1Len] = 0;
+					bs.Read(buttonslen[0]);
+					bs.Read((char *)&buttons[0], buttonslen[0]);
 
-	bsData.Read(sampDialog.bButton2Len);
-	bsData.Read(sampDialog.szButton2, sampDialog.bButton2Len);
-	sampDialog.szButton2[sampDialog.bButton2Len] = 0;
+					bs.Read(buttonslen[1]);
+					bs.Read((char *)&buttons[1], buttonslen[1]);
 
-	stringCompressor->DecodeString(sampDialog.szInfo, 256, &bsData);
-*/
-				uint8_t style;
-				uint16_t dialogid;
-				uint8_t titlelen;
-				uint8_t title[256];
-				uint8_t buttonslen[2];
-				uint8_t buttons[2][256];
-				uint8_t content[256];
+					StringCompressor::Instance()->DecodeString(content,sizeof(content),&bs);
 
-				memset(&content,0,sizeof(content));
-				memset((char *)&buttons,0,sizeof(buttons));
-				memset(&title,0,sizeof(title));
-				bs.Read(dialogid);
-				bs.Read(style);
-				bs.Read(titlelen);
-				bs.Read((char *)&title, titlelen);
-
-				bs.Read(buttonslen[0]);
-				bs.Read((char *)&buttons[0], buttonslen[0]);
-
-				bs.Read(buttonslen[1]);
-				bs.Read((char *)&buttons[1], buttonslen[1]);
-
-				StringCompressor::Instance()->DecodeString((char *)&content,256,&bs);
-
-				printf("%s\n%s\n",title, content);
+					printf("ID: %d, style: %d\nTitle: %s\nContent: %s\n", dialogid, style,title, content);
 				}
 				break;
 			}
@@ -516,23 +497,28 @@ struct stSAMPDialog
 				//printf("[S->C] RPC Reply\n");
 				break;
 			}
+			case ID_REQUEST_STATIC_DATA: {
+
+				printf("[S->C] Static Data Request\n");
+				break;
+			}
+			case ID_RECEIVED_STATIC_DATA: {
+				printf("[S->C] Static Data Recieved\n");
+				FILE *fd = fopen("static.bin", "wb");
+				uint32_t len = BITS_TO_BYTES(stream->GetNumberOfUnreadBits());
+				uint8_t *bf = (uint8_t *)malloc(len);
+				stream->Read((char *)bf,len);
+				fwrite(bf,len,1,fd);
+				free(bf);
+				fclose(fd);
+				break;
+			}
 			default:
 			//printf("[S->C] Got unknown packet ID: %lu %02X (len %d - %d)\n",msgid,msgid, data_len-1,len);
 			//return;
 			break;
 		}
 		//printf("server sent Packet ID: %02X/%d\n",buff[0],buff[0]);
-		if(writemode) {
-			fwrite(buff, len, 1, fd);
-
-			for(int i=0;i<4;i++) {
-				char c = 0xCC;
-				fwrite(&c, 1, 1, fd);
-				fflush(fd);
-			}
-		}
-		
-		sendto(m_sd, (char *)buff, len, 0, (struct sockaddr *)&m_address_info, slen);
 		//printf("Sending %d packet to client\n", len);
-	}
+	}	
 }
