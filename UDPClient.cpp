@@ -138,8 +138,8 @@ UDPClient::UDPClient(int sd, struct sockaddr_in *si_other, uint32_t server_ip, u
     StringCompressor::AddReference();
 }
 UDPClient::~UDPClient() {
-
 }
+
 void UDPClient::process_packet(char *buff, int len) {
 	SAMPHeader *header = (SAMPHeader *)buff;
 	if(header->magic != SAMP_MAGIC) {
@@ -191,12 +191,13 @@ void UDPClient::process_game_packet(char *buff, int len, bool client_to_server) 
 	void sampEncrypt(uint8_t *buf, int len, int port, int unk);
 void sampDecrypt(uint8_t *buf, int len, int port, int unk);
 	*/
+	bool should_send = true;
 	if(client_to_server) {
 		sampDecrypt((uint8_t*)buff, len, m_proxy_server_port, 0);
 	}
 	RakNet::BitStream is((unsigned char *)buff, len, false);
 	if(!m_raknet_mode) {
-		process_bitstream(&is, client_to_server);
+		should_send = process_bitstream(&is, client_to_server);
 	} else {
 		
 		bool hasacks;
@@ -246,25 +247,32 @@ void sampDecrypt(uint8_t *buf, int len, int port, int unk);
 			is.ReadAlignedBytes((unsigned char *)&data, BITS_TO_BYTES(data_len));
 
 			RakNet::BitStream bs((unsigned char *)&data, BITS_TO_BYTES(data_len), false);
-			process_bitstream(&bs, client_to_server);
+			should_send = process_bitstream(&bs, client_to_server);
+			if(!should_send) break;
 		}
 	}
 
 
 	socklen_t slen = sizeof(struct sockaddr_in);
 
-	if(client_to_server) {
-		sampEncrypt((uint8_t*)buff, len-1, (m_server_port), 0);		
-		sendto(m_server_socket,(char *)buff,len,0,(struct sockaddr *)&m_server_addr, slen);
-	} else {
-		sendto(m_sd, (char *)buff, len, 0, (struct sockaddr *)&m_address_info, slen);
+	if(should_send) {
+		if(client_to_server) {
+			sampEncrypt((uint8_t*)buff, len-1, (m_server_port), 0);		
+			sendto(m_server_socket,(char *)buff,len,0,(struct sockaddr *)&m_server_addr, slen);
+		} else {
+			sendto(m_sd, (char *)buff, len, 0, (struct sockaddr *)&m_address_info, slen);
+		}
 	}
 
 }
-
-void UDPClient::process_bitstream(RakNet::BitStream *stream, bool client_to_server) {
+bool UDPClient::process_bitstream(RakNet::BitStream *stream, bool client_to_server) {
+    time_t now = time (0);
+    char buff[256];
+    strftime (buff, 100, "%H:%M:%S", localtime (&now));
+    
 	uint8_t msgid;
 	stream->Read(msgid);
+	printf("%s [%d] ", buff, msgid);
 	if(client_to_server) {		
 		switch(msgid) {
 			case ID_OPEN_CONNECTION_REQUEST:
@@ -272,6 +280,14 @@ void UDPClient::process_bitstream(RakNet::BitStream *stream, bool client_to_serv
 			break;
 			case ID_CONNECTION_REQUEST: {
 				printf("[C->S] Connection Request\n");
+				break;
+			}
+			case ID_DETECT_LOST_CONNECTIONS: {
+				printf("[C->S] Detect Lost Connections - %d\n", BITS_TO_BYTES(stream->GetNumberOfUnreadBits()));
+				break;
+			}
+			case ID_RECEIVED_STATIC_DATA: {
+				printf("[C->S] Sent Static Data - %d\n", BITS_TO_BYTES(stream->GetNumberOfUnreadBits()));
 				break;
 			}
 			case ID_AUTH_KEY:
@@ -290,7 +306,15 @@ void UDPClient::process_bitstream(RakNet::BitStream *stream, bool client_to_serv
 				break;
 			}
 			case ID_CONNECTED_PONG: {
-				//printf("[C->S] Pong\n");
+
+				uint32_t times[2];
+				stream->Read(times[0]);
+				stream->Read(times[1]);
+				printf("[C->S] Connected Pong - %d %d\n", times[0], times[1]);
+				break;
+			}
+			case ID_PONG: {
+				printf("[C->S] Pong\n");
 				break;
 			}
 			case ID_RPC: {
@@ -355,11 +379,11 @@ void UDPClient::process_bitstream(RakNet::BitStream *stream, bool client_to_serv
 			//printf("[C->S] Pos: %f, %f, %f\n",fs.vecPos[0],fs.vecPos[1],fs.vecPos[2]);
 			break;
 			case ID_VEHICLE_SYNC: {
-				//printf("[C->S] Vehicle Sync\n'");
+				printf("[C->S] Vehicle Sync\n'");
 				break;
 			}
 			case ID_STATS_UPDATE: {
-				//printf("[C->S] Stats Update\n");
+				printf("[C->S] Stats Update\n");
 				break;
 			}
 			case ID_DISCONNECTION_NOTIFICATION: {
@@ -367,11 +391,19 @@ void UDPClient::process_bitstream(RakNet::BitStream *stream, bool client_to_serv
 				break;
 			}
 			case ID_INTERNAL_PING: {
-				//printf("[C->S] Internal Ping\n");
+				printf("[C->S] Internal Ping\n");
+				break;
+			}
+			case ID_PING_OPEN_CONNECTIONS: {
+				printf("[C->S] Ping Open Connections");
+				break;
+			}
+			case ID_PING: {
+				printf("[C->S] Ping\n");
 				break;
 			}
 			default:
-			//printf("[C->S] Got unknown packet ID: %lu %02X (len %d - %d)\n",msgid,msgid, data_len-1,len);
+			printf("[C->S] Got unknown packet ID: %lu %02X\n",msgid,msgid);
 			//return;
 			break;
 		}
@@ -400,6 +432,10 @@ void UDPClient::process_bitstream(RakNet::BitStream *stream, bool client_to_serv
 				m_state = ESAMPState_WaitChallenge;
 			}
 			break;
+			case ID_DETECT_LOST_CONNECTIONS: {
+				printf("[S->C] Detect Lost Connections - %d\n", BITS_TO_BYTES(stream->GetNumberOfUnreadBits()));
+				break;
+			}
 			case ID_AUTH_KEY:
 			{
 				uint8_t key_len;
@@ -412,13 +448,17 @@ void UDPClient::process_bitstream(RakNet::BitStream *stream, bool client_to_serv
 			}
 			case ID_CONNECTION_REQUEST_ACCEPTED: {
 				printf("[S->C] Connection Accepted\n");
-				stream->IgnoreBits(32);
-				stream->IgnoreBits(16);
+				uint32_t ip;
+				uint16_t port;
+				stream->Read(ip);
+				stream->Read(port);
 				uint16_t player_id;
 				uint32_t challenge;
 				stream->Read(player_id);
 				stream->Read(challenge);
-				printf("ID: %d, challenge: %08X\n",player_id, challenge);
+				struct sockaddr_in ipaddr;
+				ipaddr.sin_addr.s_addr = ip;
+				printf("ID: %d, challenge: %08X, IP: %s, Port: %d\n",player_id, challenge, inet_ntoa(ipaddr.sin_addr),port);
 				break;
 			}
 			case ID_TIMESTAMP: {
@@ -435,7 +475,7 @@ void UDPClient::process_bitstream(RakNet::BitStream *stream, bool client_to_serv
 				
 				
 				
-				printf("[S->C] RPC: %d\n",rpcid);
+				printf("[S->C] RPC: %d - %d\n",rpcid,bytes);
 				//if(rpcid != 93) break;
 				char rpcdata[1024];
 				
@@ -478,47 +518,69 @@ void UDPClient::process_bitstream(RakNet::BitStream *stream, bool client_to_serv
 					StringCompressor::Instance()->DecodeString(content,sizeof(content),&bs);
 
 					printf("ID: %d, style: %d\nTitle: %s\nContent: %s\n", dialogid, style,title, content);
+				} else if(rpcid == 129) {
+					uint32_t spawnid;
+					bs.Read(spawnid);
+					printf("Spawn request: %d\n", spawnid);
+				} else if(rpcid == 60) {
+					uint32_t update_code;
+					bs.Read(update_code);
+					printf("Player Update - %d\n",update_code);
 				}
 				break;
 			}
 			case ID_INTERNAL_PING: {
-				//printf("[S->C] Internal Ping\n");
+				uint32_t time;
+				stream->Read(time);
+				printf("[S->C] Internal Ping - %d\n", time);
+				break;
+			}
+			case ID_CONNECTED_PONG: {
+
+				uint32_t times;
+				stream->Read(times);
+				printf("[S->C] Connected Pong - %d\n", times);
+				break;
+			}
+			case ID_PONG: {
+				printf("[S->C] Pong\n");
 				break;
 			}
 			case ID_PLAYER_SYNC: {
-				//printf("[S->C] Player Sync\n'");
+				printf("[S->C] Player Sync\n'");
+				break;
+			}
+			case ID_PING_OPEN_CONNECTIONS: {
+				printf("[S->C] Ping Open Connections");
+				break;
+			}
+			case ID_PING: {
+				printf("[S->C] Ping\n");
 				break;
 			}
 			case ID_VEHICLE_SYNC: {
-				//printf("[S->C] Vehicle Sync\n'");
+				printf("[S->C] Vehicle Sync\n'");
 				break;
 			}
 			case ID_RPC_REPLY: {
-				//printf("[S->C] RPC Reply\n");
+				printf("[S->C] RPC Reply\n");
 				break;
 			}
 			case ID_REQUEST_STATIC_DATA: {
-
-				printf("[S->C] Static Data Request\n");
+				printf("[S->C] Static Data Request - %d\n", BITS_TO_BYTES(stream->GetNumberOfUnreadBits()));
 				break;
 			}
 			case ID_RECEIVED_STATIC_DATA: {
-				printf("[S->C] Static Data Recieved\n");
-				FILE *fd = fopen("static.bin", "wb");
-				uint32_t len = BITS_TO_BYTES(stream->GetNumberOfUnreadBits());
-				uint8_t *bf = (uint8_t *)malloc(len);
-				stream->Read((char *)bf,len);
-				fwrite(bf,len,1,fd);
-				free(bf);
-				fclose(fd);
+				printf("[S->C] Static Data Recieved - %d\n", BITS_TO_BYTES(stream->GetNumberOfUnreadBits()));
 				break;
 			}
 			default:
-			//printf("[S->C] Got unknown packet ID: %lu %02X (len %d - %d)\n",msgid,msgid, data_len-1,len);
+			printf("[S->C] Got unknown packet ID: %lu %02X\n",msgid,msgid);
 			//return;
 			break;
 		}
 		//printf("server sent Packet ID: %02X/%d\n",buff[0],buff[0]);
 		//printf("Sending %d packet to client\n", len);
 	}	
+	return true;
 }

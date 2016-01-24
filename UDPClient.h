@@ -19,7 +19,7 @@ public:
 	int getServerSocket();
 	void readServer();
 	void process_game_packet(char *buff, int len, bool client_to_server);
-	void process_bitstream(RakNet::BitStream *stream, bool client_to_server);
+	bool process_bitstream(RakNet::BitStream *stream, bool client_to_server);
 private:
 	struct sockaddr_in m_address_info;
 	int m_sd;

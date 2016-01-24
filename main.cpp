@@ -24,12 +24,13 @@ int main() {
     WSAStartup(MAKEWORD(1,0),&wsdata);
 	#endif
 //s1.crazybobs.net:7777
-	char *server_dest_ip = "server.ls-rp.com";
+	//char *server_dest_ip = "samp.nl-rp.net";
+	char *server_dest_ip = "127.0.0.1";
 	uint16_t server_dest_port = 7777;
 
 	//char *bind_ip = "192.168.10.67";
 	char *bind_ip = "localhost";
-	uint16_t server_source_port = 7777;
+	uint16_t server_source_port = 7778;
 
 	uint32_t server_ip = resolv(server_dest_ip);
 	//uint32_t server_bind_ip = resolv(bind_ip);
