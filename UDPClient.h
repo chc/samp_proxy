@@ -20,6 +20,8 @@ public:
 	void readServer();
 	void process_game_packet(char *buff, int len, bool client_to_server);
 	bool process_bitstream(RakNet::BitStream *stream, bool client_to_server);
+	struct sockaddr_in* getSockAddr();
+	time_t getLastRecvTime();
 private:
 	struct sockaddr_in m_address_info;
 	int m_sd;
@@ -34,6 +36,8 @@ private:
 	int m_server_socket;
 
 	struct sockaddr_in m_proxy_addr;
+
+	time_t m_last_recv_time;
 
 	SAMPState m_state;
 };

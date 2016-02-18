@@ -135,9 +135,12 @@ UDPClient::UDPClient(int sd, struct sockaddr_in *si_other, uint32_t server_ip, u
 
     printf("Server IP: %s:%d\n",inet_ntoa(m_server_addr.sin_addr),m_server_port);
 
+    m_last_recv_time = time(NULL);
+
     StringCompressor::AddReference();
 }
 UDPClient::~UDPClient() {
+	StringCompressor::RemoveReference();
 }
 
 void UDPClient::process_packet(char *buff, int len) {
@@ -159,6 +162,8 @@ void UDPClient::process_packet(char *buff, int len) {
 
 	struct sockaddr_in temp;
 	temp.sin_addr.s_addr = header->ip;
+
+	m_last_recv_time = time(NULL);
 	//printf("SAMP IP: %s %d\n",inet_ntoa(m_server_addr.sin_addr), htons(header->port));
 }
 int UDPClient::getServerSocket() {
@@ -169,6 +174,7 @@ void UDPClient::readServer() {
 	socklen_t slen = sizeof(struct sockaddr_in);
 	int len = recvfrom(m_server_socket,(char *)&recvbuf,sizeof(recvbuf),0,(struct sockaddr *)&m_server_addr,&slen);
 	SAMPHeader *header = (SAMPHeader *)&recvbuf;
+	m_last_recv_time = time(NULL);
 	if(header->magic != SAMP_MAGIC) {
 		process_game_packet((char *)&recvbuf, len, false);
 		return;
@@ -583,4 +589,11 @@ bool UDPClient::process_bitstream(RakNet::BitStream *stream, bool client_to_serv
 		//printf("Sending %d packet to client\n", len);
 	}	
 	return true;
+}
+
+struct sockaddr_in* UDPClient::getSockAddr() {
+	return (struct sockaddr_in*)&m_address_info;
+}
+time_t UDPClient::getLastRecvTime() {
+	return m_last_recv_time;
 }

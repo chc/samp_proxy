@@ -1,7 +1,14 @@
 #include "main.h"
 
+#include <vector>
+#include <iterator>
+
 #include "INetClient.h"
 #include "UDPClient.h"
+
+#define PING_TIME 120
+
+std::vector<UDPClient *> clients;
 
 uint32_t resolv(char *host) {
     struct  hostent *hp;
@@ -18,19 +25,58 @@ uint32_t resolv(char *host) {
     return(host_ip);
 }
 
+UDPClient *find_client_by_socket_info(struct sockaddr_in *peer) {
+	std::vector<UDPClient *>::iterator iterator=clients.begin();
+	UDPClient *user;
+	struct sockaddr_in *userpeer;
+	while(iterator != clients.end()) {
+		user=*iterator;
+		userpeer = user->getSockAddr();
+		if((userpeer->sin_addr.s_addr == peer->sin_addr.s_addr) && (userpeer->sin_port == peer->sin_port)) {
+			return user;
+		}
+		iterator++;
+	}
+	return NULL;
+}
+
+void deleteClient(UDPClient *client) {
+	std::vector<UDPClient *>::iterator iterator;
+	iterator=clients.begin();
+	while(iterator != clients.end()) {
+		if(*iterator==client) {
+			iterator = clients.erase(iterator);
+			delete client;
+		} else {
+			iterator++;
+		}
+	}
+}
+void check_timeouts() {
+	std::vector<UDPClient *>::iterator iterator=clients.begin();
+	UDPClient *user;
+	while(iterator != clients.end()) {
+		user=*iterator;
+		if(time(NULL)-PING_TIME > user->getLastRecvTime()) {
+			deleteClient(user);
+			iterator = clients.begin();
+			continue;
+		}
+		iterator++;
+	}
+}
 int main() {
 	#ifdef _WIN32
     WSADATA wsdata;
     WSAStartup(MAKEWORD(1,0),&wsdata);
 	#endif
-//s1.crazybobs.net:7777
 	//char *server_dest_ip = "samp.nl-rp.net";
-	char *server_dest_ip = "127.0.0.1";
+	char *server_dest_ip = "samp.wc-rp.net";
 	uint16_t server_dest_port = 7777;
 
 	//char *bind_ip = "192.168.10.67";
 	char *bind_ip = "localhost";
-	uint16_t server_source_port = 7778;
+	uint16_t server_source_port = 7777;
 
 	uint32_t server_ip = resolv(server_dest_ip);
 	//uint32_t server_bind_ip = resolv(bind_ip);
@@ -61,6 +107,8 @@ int main() {
 	printf("Enter loop\n");
 
 	UDPClient *client = NULL;
+
+
     while(true) {
 		
 
@@ -70,33 +118,40 @@ int main() {
 
 		FD_ZERO(&fdset);
 		FD_SET(server_sd, &fdset);
-		if(client) {
-			FD_SET(client->getServerSocket(), &fdset);
-			
+
+		for(std::vector<UDPClient *>::iterator it = clients.begin(); it != clients.end();it++) {
+			UDPClient *c = *it;
+			FD_SET(c->getServerSocket(), &fdset);
 		}
 		if(select(hsock, &fdset, NULL, NULL, &timeout) < 0) {
+			check_timeouts();
 			continue;
 		}
 
 		if(FD_ISSET(server_sd, &fdset)) {
 			char recvbuf[1024];
-
 		    struct sockaddr_in si_other;
 		    socklen_t slen = sizeof(struct sockaddr_in);
+
 			int len = recvfrom(server_sd,(char *)&recvbuf,sizeof(recvbuf),0,(struct sockaddr *)&si_other,&slen);
-			if(client == NULL) {
+			UDPClient *c = find_client_by_socket_info(&si_other);
+			if(c) {
+				client = c;
+			} else {
 				client = new UDPClient(server_sd, &si_other, server_ip, server_dest_port, server_source_port);
-				if(client->getServerSocket()+1 > hsock) {
-					hsock = client->getServerSocket()+1;
-				}
+				clients.push_back(client);
+			}
+			if(client->getServerSocket()+1 > hsock) {
+				hsock = client->getServerSocket()+1;
 			}
 			client->process_packet((char *)&recvbuf, len);
 		}
-
-		if(client) {
-			if(FD_ISSET(client->getServerSocket(), &fdset)) {
-				client->readServer();
+		for(std::vector<UDPClient *>::iterator it = clients.begin(); it != clients.end();it++) {
+			UDPClient *c = *it;
+			if(FD_ISSET(c->getServerSocket(), &fdset)) {
+				c->readServer();
 			}
 		}
+		check_timeouts();
 	}
 }
