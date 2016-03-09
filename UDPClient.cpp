@@ -5,7 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <memory.h>
-
+#include <errno.h>
 
 #define SAMP_MAGIC 0x504d4153
 
@@ -131,7 +131,7 @@ UDPClient::UDPClient(int sd, struct sockaddr_in *si_other, uint32_t server_ip, u
     m_proxy_server_port = proxy_server_port;
     m_raknet_mode = false;
 
-    connect(m_server_socket, (struct sockaddr *)&m_server_addr, sizeof(m_server_addr));
+    //connect(m_server_socket, (struct sockaddr *)&m_server_addr, sizeof(m_server_addr));
 
     printf("Server IP: %s:%d\n",inet_ntoa(m_server_addr.sin_addr),m_server_port);
 
@@ -158,13 +158,13 @@ void UDPClient::process_packet(char *buff, int len) {
 	header->ip = htonl(m_server_ip);
 
 	socklen_t slen = sizeof(struct sockaddr_in);
-	sendto(m_server_socket,(char *)buff,len,0,(struct sockaddr *)&m_server_addr, slen);
+	int r = sendto(m_server_socket,(char *)buff,len,0,(struct sockaddr *)&m_server_addr, slen);
 
 	struct sockaddr_in temp;
 	temp.sin_addr.s_addr = header->ip;
 
 	m_last_recv_time = time(NULL);
-	//printf("SAMP IP: %s %d\n",inet_ntoa(m_server_addr.sin_addr), htons(header->port));
+	printf("SAMP IP: %s %d\n",inet_ntoa(m_server_addr.sin_addr), htons(m_server_addr.sin_port));
 }
 int UDPClient::getServerSocket() {
 	return m_server_socket;

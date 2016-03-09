@@ -71,11 +71,11 @@ int main() {
     WSAStartup(MAKEWORD(1,0),&wsdata);
 	#endif
 	//char *server_dest_ip = "samp.nl-rp.net";
-	char *server_dest_ip = "samp.wc-rp.net";
+	char *server_dest_ip = "samp.nl-rp.net";
 	uint16_t server_dest_port = 7777;
 
 	//char *bind_ip = "192.168.10.67";
-	char *bind_ip = "localhost";
+	char *bind_ip = "0.0.0.0";
 	uint16_t server_source_port = 7777;
 
 	uint32_t server_ip = resolv(server_dest_ip);

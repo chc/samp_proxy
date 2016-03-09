@@ -16,7 +16,7 @@ typedef int socklen_t;
 #include <netdb.h>
 #include <pthread.h>
 #include <sys/times.h>
-#include <stropts.h>
+//#include <stropts.h>
 
 #endif
 #include <stdio.h>
