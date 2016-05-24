@@ -44,7 +44,7 @@ enum PacketEnumeration
 	ID_CONNECTION_LOST,
 	ID_CONNECTION_REQUEST_ACCEPTED,
 	ID_CONNECTION_BANNED = 36,
-	ID_INVALID_PASSuint16_t,
+	ID_INVALID_PASS,
 	ID_MODIFIED_PACKET,
 	ID_PONG,
 	ID_TIMESTAMP,
@@ -278,6 +278,30 @@ bool UDPClient::process_bitstream(RakNet::BitStream *stream, bool client_to_serv
     
 	uint8_t msgid;
 	stream->Read(msgid);
+
+						bool zone_names, cj_walk, allow_weapons, limit_chat_radius;
+					float chat_radius;
+					bool stunt_bonus;
+					float nametag_dist;
+					bool enter_exits, nametag_los, manual_lighting;
+					uint32_t spawns_avail; //??
+					uint16_t player_id;
+					bool show_nametags;
+					uint32_t player_markers;
+					uint8_t server_hour, server_weather;
+					float gravity;
+					bool lan_mode;
+
+					bool unk_bool1;
+
+					uint32_t foot_sendrate, incar_sendrate, firing_sendrate, send_multiplier;
+					bool lanmode;
+					uint8_t unk[3];
+					uint32_t drop_money;
+					uint8_t servlen;
+					uint8_t lagcomp;
+
+
 	printf("%s [%d] ", buff, msgid);
 	if(client_to_server) {		
 		switch(msgid) {
@@ -289,7 +313,7 @@ bool UDPClient::process_bitstream(RakNet::BitStream *stream, bool client_to_serv
 				break;
 			}
 			case ID_DETECT_LOST_CONNECTIONS: {
-				printf("[C->S] Detect Lost Connections - %d\n", BITS_TO_BYTES(stream->GetNumberOfUnreadBits()));
+				//printf("[C->S] Detect Lost Connections - %d\n", BITS_TO_BYTES(stream->GetNumberOfUnreadBits()));
 				break;
 			}
 			case ID_RECEIVED_STATIC_DATA: {
@@ -316,11 +340,11 @@ bool UDPClient::process_bitstream(RakNet::BitStream *stream, bool client_to_serv
 				uint32_t times[2];
 				stream->Read(times[0]);
 				stream->Read(times[1]);
-				printf("[C->S] Connected Pong - %d %d\n", times[0], times[1]);
+				//printf("[C->S] Connected Pong - %d %d\n", times[0], times[1]);
 				break;
 			}
 			case ID_PONG: {
-				printf("[C->S] Pong\n");
+				//printf("[C->S] Pong\n");
 				break;
 			}
 			case ID_RPC: {
@@ -334,7 +358,7 @@ bool UDPClient::process_bitstream(RakNet::BitStream *stream, bool client_to_serv
 
 				
 				//if(rpcid == 0 ||data_len < 0 || data_len > len || bits == 0) break;
-				printf("[C->S] RPC %d\n",rpcid);
+				printf("[C->S] RPC %d - %d\n",rpcid, bytes);
 				
 				char rpcdata[1024];
 				
@@ -375,6 +399,17 @@ bool UDPClient::process_bitstream(RakNet::BitStream *stream, bool client_to_serv
 					bs.Read((char *)&cmd, cmdlen);
 					printf("Cmd: %s\n",cmd);
 
+				} else if(rpcid == 26) {
+					uint16_t carid;
+					uint8_t seat;
+					bs.Read(carid);
+					bs.Read(seat);
+					printf("Enter car: %d seat: %d\n",carid, seat);
+				} else if(rpcid == 128) {
+					uint16_t playerid, classid;
+					bs.Read(playerid);
+					bs.Read(classid);
+					printf("Class: %d %d\n", playerid, classid);
 				}
 				
 				break;
@@ -385,7 +420,7 @@ bool UDPClient::process_bitstream(RakNet::BitStream *stream, bool client_to_serv
 			//printf("[C->S] Pos: %f, %f, %f\n",fs.vecPos[0],fs.vecPos[1],fs.vecPos[2]);
 			break;
 			case ID_VEHICLE_SYNC: {
-				printf("[C->S] Vehicle Sync\n'");
+				//printf("[C->S] Vehicle Sync\n'");
 				break;
 			}
 			case ID_STATS_UPDATE: {
@@ -397,15 +432,19 @@ bool UDPClient::process_bitstream(RakNet::BitStream *stream, bool client_to_serv
 				break;
 			}
 			case ID_INTERNAL_PING: {
-				printf("[C->S] Internal Ping\n");
+				uint32_t time;
+				stream->Read(time);
+				//printf("[C->S] Internal Ping - %d\n", time);
 				break;
 			}
 			case ID_PING_OPEN_CONNECTIONS: {
-				printf("[C->S] Ping Open Connections");
+				//printf("[C->S] Ping Open Connections");
 				break;
 			}
 			case ID_PING: {
-				printf("[C->S] Ping\n");
+				uint32_t time;
+				stream->Read(time);
+				//printf("[C->S] Ping - %d\n", time);
 				break;
 			}
 			default:
@@ -484,7 +523,14 @@ bool UDPClient::process_bitstream(RakNet::BitStream *stream, bool client_to_serv
 				printf("[S->C] RPC: %d - %d\n",rpcid,bytes);
 				//if(rpcid != 93) break;
 				char rpcdata[1024];
-				
+
+				uint16_t id;
+				uint32_t colour;
+				float x,y,z,dd;
+				uint8_t test_los;
+				uint16_t playerid, vehid;
+				uint8_t flags;
+			
 				stream->ReadBits((unsigned char *)&rpcdata, bits, false);
 				RakNet::BitStream bs((unsigned char *)&rpcdata, bytes, true);
 				if(rpcid == 93) {
@@ -532,24 +578,162 @@ bool UDPClient::process_bitstream(RakNet::BitStream *stream, bool client_to_serv
 					uint32_t update_code;
 					bs.Read(update_code);
 					printf("Player Update - %d\n",update_code);
+				} else if(rpcid == 36) {
+
+					bs.Read(id);
+					bs.Read(colour);
+					bs.Read(x);
+					bs.Read(y);
+					bs.Read(z);
+					bs.Read(dd);
+					bs.Read(test_los);
+					bs.Read(playerid);
+					bs.Read(vehid);
+					printf("Label ID: %d Colour: %08X\nPos: %f, %f, %f\nDist:%f\nTestLOD: %d\nPlayerID: %d\nVehicle ID: %d\n", id, colour, x, y, z, dd,test_los, playerid, vehid);
+				} else if(rpcid == 32) {
+					uint8_t team;
+					uint16_t player;
+					uint32_t skin;
+					float x,y,z;
+					bs.Read(player);
+					bs.Read(team);
+					bs.Read(skin);
+					bs.Read(x);
+					bs.Read(y);
+					bs.Read(z);
+					printf("Spawn: ID: %d, pos: %f %f %f\n", player, x,y, z);
+				} else if(rpcid == 128) {	
+					uint8_t team;
+					uint32_t skin;
+					uint8_t class_id, unk2;
+					float pos[3];
+					float rot;
+					uint32_t weapon[3];
+					uint32_t ammo[3];
+					bs.Read(unk2);
+					bs.Read(team);
+					bs.Read(skin);
+					bs.Read(class_id);
+					bs.Read(pos[0]);
+					bs.Read(pos[1]);
+					bs.Read(pos[2]);
+					bs.Read(rot);
+					bs.Read(weapon[0]);
+					bs.Read(weapon[1]);
+					bs.Read(weapon[2]);
+					bs.Read(ammo[0]);
+					bs.Read(ammo[1]);
+					bs.Read(ammo[2]);
+					printf("Spawn stuff: %d - %d - %d - %d - %f %f %f (%d)\n", team, class_id, unk2, skin, pos[0], pos[1], pos[2],  BITS_TO_BYTES(bs.GetNumberOfUnreadBits()));
+				} else if(rpcid == 139) {
+
+
+					bs.ReadCompressed(zone_names);
+					bs.ReadCompressed(cj_walk);
+					bs.ReadCompressed(allow_weapons);
+					bs.ReadCompressed(limit_chat_radius);
+					bs.Read(chat_radius);
+					bs.ReadCompressed(stunt_bonus);
+					bs.Read(nametag_dist);
+					bs.ReadCompressed(enter_exits);
+					bs.ReadCompressed(nametag_los);
+					bs.ReadCompressed(manual_lighting);
+					bs.Read(spawns_avail);
+					bs.Read(player_id);
+					bs.ReadCompressed(show_nametags);
+					bs.Read(player_markers);
+					bs.Read(server_hour);
+					bs.Read(server_weather);
+					bs.Read(gravity);
+					bs.ReadCompressed(lanmode);
+					bs.Read(drop_money);
+					bs.ReadCompressed(unk_bool1);
+
+					bs.Read(foot_sendrate);
+					bs.Read(incar_sendrate);
+					bs.Read(firing_sendrate);
+					bs.Read(send_multiplier);
+					bs.Read(lagcomp);
+					bs.Read(unk[0]);
+					bs.Read(unk[1]);
+					bs.Read(unk[2]);
+
+					bs.Read(servlen);
+					char servname[128];
+					bs.Read((char *)&servname, servlen);
+
+					printf("Join server: %s\nClass thing: %d\nUnks: %d %d %d", servname,spawns_avail, unk[0], unk[1], unk[2]);
+				} else if(rpcid == 73) {
+					char str[256];
+					uint32_t style, mili, length;
+					bs.Read(style);
+					bs.Read(mili);
+					bs.Read(length);
+					bs.Read((char *)&str, length);
+					printf("Game text: time: %d, len: %d - %d\n%s\n", mili, length, BITS_TO_BYTES(bs.GetNumberOfUnreadBits()), str);
+				} else if(rpcid == 134) {
+					uint8_t tdshadow, tdoutline, tdstyle, tdselectable;
+					float tdw,tdh;
+					uint32_t tdcol, tdboxcol, tdbgcol;
+					float tdwidth, tdheight;
+					float tdx, tdy, tdrx, tdry, tdrz, tdzoom;
+					uint16_t tdmdl;
+					uint16_t tdcols[2];
+					uint16_t tdlen;
+					char tdstr[1024];
+					memset(&tdstr, 0, sizeof(tdstr));
+					bs.Read(id);
+					bs.Read(flags);
+					bs.Read(tdw);
+					bs.Read(tdh);
+					bs.Read(tdcol);
+					bs.Read(tdwidth);
+					bs.Read(tdheight);
+					bs.Read(tdboxcol);
+					bs.Read(tdshadow);
+					bs.Read(tdoutline);
+					bs.Read(tdbgcol);
+					bs.Read(tdstyle);
+					bs.Read(tdselectable);
+					bs.Read(tdx);
+					bs.Read(tdy);
+					bs.Read(tdmdl);
+					bs.Read(tdrx);
+					bs.Read(tdry);
+					bs.Read(tdrz);
+					bs.Read(tdzoom);
+					bs.Read(tdcols[0]);
+					bs.Read(tdcols[1]);
+					bs.Read(tdlen);
+					bs.Read((char *)&tdstr, tdlen);
+					printf("Textdraw: ID: %d\nTD Flags: %d\nTD Length: %f, %f\n", id, flags, tdw, tdh);
+					printf("TD Col: %08X\nTD Width/Height: %f %f\nTD Shadow/Outline: %d %d\nTD Pos: %f %f",tdcol,tdwidth, tdheight, tdshadow, tdoutline, tdx, tdy);
+					printf("TD Box Col: %08X\nTD Style: %d\nTD Mdl: %d\nTD Rot: %f %f %f\nTD Zoom: %f\nTD Cols: %08X %08X\n",tdboxcol, tdstyle, tdmdl, tdrx, tdry, tdrz, tdzoom, tdcols[0], tdcols[1]);
+					printf("TD Msg: %s\n", tdstr);
+				} else if(rpcid == 83) {
+					uint32_t hover_colour;
+					uint8_t selunk;
+					bs.Read(hover_colour);
+					bs.Read(selunk);
+					printf("select td: %02X - %08X\n",selunk, hover_colour);
 				}
 				break;
 			}
 			case ID_INTERNAL_PING: {
 				uint32_t time;
 				stream->Read(time);
-				printf("[S->C] Internal Ping - %d\n", time);
+				//printf("[S->C] Internal Ping - %d\n", time);
 				break;
 			}
 			case ID_CONNECTED_PONG: {
 
 				uint32_t times;
 				stream->Read(times);
-				printf("[S->C] Connected Pong - %d\n", times);
+				//printf("[S->C] Connected Pong - %d\n", times);
 				break;
 			}
 			case ID_PONG: {
-				printf("[S->C] Pong\n");
+				//printf("[S->C] Pong\n");
 				break;
 			}
 			case ID_PLAYER_SYNC: {
@@ -557,15 +741,15 @@ bool UDPClient::process_bitstream(RakNet::BitStream *stream, bool client_to_serv
 				break;
 			}
 			case ID_PING_OPEN_CONNECTIONS: {
-				printf("[S->C] Ping Open Connections");
+				//printf("[S->C] Ping Open Connections");
 				break;
 			}
 			case ID_PING: {
-				printf("[S->C] Ping\n");
+				//printf("[S->C] Ping\n");
 				break;
 			}
 			case ID_VEHICLE_SYNC: {
-				printf("[S->C] Vehicle Sync\n'");
+				printf("[S->C] Vehicle Sync\n");
 				break;
 			}
 			case ID_RPC_REPLY: {
@@ -588,6 +772,7 @@ bool UDPClient::process_bitstream(RakNet::BitStream *stream, bool client_to_serv
 		//printf("server sent Packet ID: %02X/%d\n",buff[0],buff[0]);
 		//printf("Sending %d packet to client\n", len);
 	}	
+	printf("\n");
 	return true;
 }
 

@@ -70,12 +70,14 @@ int main() {
     WSADATA wsdata;
     WSAStartup(MAKEWORD(1,0),&wsdata);
 	#endif
-	//char *server_dest_ip = "samp.nl-rp.net";
-	char *server_dest_ip = "samp.nl-rp.net";
+	//char *server_dest_ip = "194.135.90.16";
+	//char *server_dest_ip = "10.1.1.100";
+	//char *server_dest_ip = "samp.ng-gaming.net";
+	char *server_dest_ip = "10.1.1.133";
 	uint16_t server_dest_port = 7777;
 
 	//char *bind_ip = "192.168.10.67";
-	char *bind_ip = "0.0.0.0";
+	char *bind_ip = "10.1.1.100";
 	uint16_t server_source_port = 7777;
 
 	uint32_t server_ip = resolv(server_dest_ip);
@@ -127,7 +129,6 @@ int main() {
 			check_timeouts();
 			continue;
 		}
-
 		if(FD_ISSET(server_sd, &fdset)) {
 			char recvbuf[1024];
 		    struct sockaddr_in si_other;
